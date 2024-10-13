@@ -15,9 +15,7 @@ def handle_shutdown(signal: Any, frame: Any) -> None:
 signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
 
-
-SCRAPE_INTERVAL = int(os.getenv('SCRAPE_INTERVAL', '10'))
-MAX_RETRIES_IN_ROW = int(os.getenv('MAX_RETRIES_IN_ROW', '10'))
+MERGE_INTERVAL = int(os.getenv('MERGE_INTERVAL', '10'))
 
 def print_timed(msg):
     """Print a message with a timestamp for better debugging."""
@@ -155,4 +153,4 @@ if __name__ == "__main__":
     while not exit_event.is_set():
         run_merge()
 
-        exit_event.wait(SCRAPE_INTERVAL)
+        exit_event.wait(MERGE_INTERVAL)

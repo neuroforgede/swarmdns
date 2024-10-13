@@ -31,10 +31,10 @@ import boto3
 from concurrent.futures import ThreadPoolExecutor
 
 
-STRIP_DOMAIN_ENDINGS = os.getenv('DOMAIN_ENDING', '.localdomain.,.docker.,.docker.localdomain.').split(',')
+STRIP_DOMAIN_ENDINGS = os.getenv('STRIP_DOMAIN_ENDINGS', '.localdomain.,.docker.,.docker.localdomain.').split(',')
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 S3_REFRESH_INTERVAL = int(os.getenv('S3_REFRESH_INTERVAL', '10'))
-NETWORK_INFO_CACHE_INTERVAL = int(os.getenv('NETWORK_INFO_CACHE_INTERVAL', '10'))
+DOCKER_NETWORK_INFO_CACHE_REFRESH_INTERVAL = int(os.getenv('DOCKER_NETWORK_INFO_CACHE_REFRESH_INTERVAL', '10'))
 
 def print_debug(msg):
     if DEBUG:
@@ -93,7 +93,7 @@ def refresh_network_info_cache():
 def refresh_network_info_cache_thread_worker():
     while not exit_event.is_set():
         refresh_network_info_cache()
-        threading.Event().wait(NETWORK_INFO_CACHE_INTERVAL)  # Refresh every 10 seconds
+        threading.Event().wait(DOCKER_NETWORK_INFO_CACHE_REFRESH_INTERVAL)  # Refresh every 10 seconds
 
 def listen_to_docker_events():
     """

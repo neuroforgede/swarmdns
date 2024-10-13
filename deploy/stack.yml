@@ -1,0 +1,43 @@
+services:
+  dns:
+    image: ghcr.io/neuroforgede/swarmdns:0.2.3
+    command: ["python", "-u", "dns.py"]
+    env_file:
+      - .env
+    environment:
+      DEBUG: "true"
+      S3_REFRESH_INTERVAL: "10"
+      DOCKER_NETWORK_INFO_CACHE_REFRESH_INTERVAL: "10"
+      STRIP_DOMAIN_ENDINGS: ".localdomain.,.docker.,.docker.localdomain."
+    network_mode: "host"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+  
+  exporter:
+    image: ghcr.io/neuroforgede/swarmdns:0.2.3
+    command: ["python", "-u", "exporter.py"]
+    env_file:
+      - .env
+    environment:
+      SWARM_NODE_ID: "{{ .Node.ID }}"
+      EXPORTER_INTERVAL: "10"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  nodes:
+    image: ghcr.io/neuroforgede/swarmdns:0.2.3
+    command: ["python", "-u", "nodes.py"]
+    env_file:
+      - .env
+    environment:
+      NODES_INTERVAL: "60"
+    volumes:
+      - /var/run/docker.sock:/var/run/docker.sock
+
+  merger:
+    image: ghcr.io/neuroforgede/swarmdns:0.2.3
+    command: ["python", "-u", "merger.py"]
+    env_file:
+      - .env
+    environment:
+      MERGE_INTERVAL: "10"

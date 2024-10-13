@@ -40,7 +40,6 @@ signal.signal(signal.SIGTERM, handle_shutdown)
 
 
 SCRAPE_INTERVAL = int(os.getenv('SCRAPE_INTERVAL', '10'))
-MAX_RETRIES_IN_ROW = int(os.getenv('MAX_RETRIES_IN_ROW', '10'))
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 
 def print_debug(msg):

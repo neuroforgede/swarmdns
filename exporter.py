@@ -34,10 +34,7 @@ def handle_shutdown(signal: Any, frame: Any) -> None:
 signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
 
-
-SCRAPE_INTERVAL = int(os.getenv('SCRAPE_INTERVAL', '10'))
-MAX_RETRIES_IN_ROW = int(os.getenv('MAX_RETRIES_IN_ROW', '10'))
-
+EXPORTER_INTERVAL = int(os.getenv('EXPORTER_INTERVAL', '10'))
 
 def print_timed(msg):
     to_print = '{} [{}]: {}'.format(
@@ -216,4 +213,4 @@ if __name__ == '__main__':
         bucket_name = os.environ['DNS_S3_BUCKET_NAME']
         upload_to_dns_s3(network_data, bucket_name, object_name=f"node-data/{filename}.json")
 
-        exit_event.wait(SCRAPE_INTERVAL)
+        exit_event.wait(EXPORTER_INTERVAL)
