@@ -39,7 +39,7 @@ signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
 
 
-SCRAPE_INTERVAL = int(os.getenv('SCRAPE_INTERVAL', '10'))
+NODES_INTERVAL = int(os.getenv('NODES_INTERVAL', '10'))
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 
 def print_debug(msg):
@@ -122,4 +122,4 @@ if __name__ == '__main__':
         save_json(nodes_info, filename)
         upload_to_dns_s3(filename, os.environ['DNS_S3_BUCKET_NAME'])
 
-        exit_event.wait(SCRAPE_INTERVAL)
+        exit_event.wait(NODES_INTERVAL)
