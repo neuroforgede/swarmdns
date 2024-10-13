@@ -9,14 +9,14 @@ services:
       S3_REFRESH_INTERVAL: "10"
       DOCKER_NETWORK_INFO_CACHE_REFRESH_INTERVAL: "10"
       STRIP_DOMAIN_ENDINGS: ".localdomain.,.docker.,.docker.localdomain."
-    network_mode: "host"
+    networks:
+      - host
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
       # every node needs a dns service
       mode: global
 
-  
   exporter:
     image: ghcr.io/neuroforgede/swarmdns:0.2.6
     command: ["python", "-u", "exporter.py"]
@@ -56,3 +56,8 @@ services:
       - .env
     environment:
       MERGE_INTERVAL: "10"
+
+networks:
+  host:
+    name: "host"
+    external: true
