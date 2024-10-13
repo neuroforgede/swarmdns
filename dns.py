@@ -301,6 +301,7 @@ def resolve_dnsA_to_ip(network_data, networks, domain):
 # DNS Server
 class DNSServer:
     def __init__(self, ip="0.0.0.0", port=53):
+        print_debug("Initializing DNS server on {ip}:{port}")
         self.ip = ip
         self.port = port
         self.server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
@@ -385,8 +386,20 @@ if __name__ == '__main__':
     # Start listening to Docker events
     threading.Thread(target=listen_to_docker_events, daemon=True).start()
 
+    bind_ip = None
+    try:
+        # get bind ip by asking the docker api what the ip of the node is
+        # in docker swarm
+        client = docker.from_env()
+        node_info = client.info()
+        node_ip = node_info['Swarm']['NodeAddr']
+        bind_ip = node_ip
+    except Exception as e:
+        print_timed(f"Error getting node IP from Docker API. Falling back to env var BIND_IP {e}")
+        bind_ip = os.environ['BIND_IP']
+
     # Initialize DNS server
-    server = DNSServer(ip=os.environ['BIND_IP'], port=53)
+    server = DNSServer(ip=bind_ip, port=53)
 
     # Start the DNS server in the main thread
     server.start()

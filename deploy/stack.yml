@@ -1,6 +1,6 @@
 services:
   dns:
-    image: ghcr.io/neuroforgede/swarmdns:0.2.3
+    image: ghcr.io/neuroforgede/swarmdns:0.2.4
     command: ["python", "-u", "dns.py"]
     env_file:
       - .env
@@ -12,9 +12,13 @@ services:
     network_mode: "host"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      # every node needs a dns service
+      mode: global
+
   
   exporter:
-    image: ghcr.io/neuroforgede/swarmdns:0.2.3
+    image: ghcr.io/neuroforgede/swarmdns:0.2.4
     command: ["python", "-u", "exporter.py"]
     env_file:
       - .env
@@ -23,9 +27,13 @@ services:
       EXPORTER_INTERVAL: "10"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      # every node needs an exporter service, we need to export
+      # all container data from all nodes
+      mode: global
 
   nodes:
-    image: ghcr.io/neuroforgede/swarmdns:0.2.3
+    image: ghcr.io/neuroforgede/swarmdns:0.2.4
     command: ["python", "-u", "nodes.py"]
     env_file:
       - .env
@@ -33,9 +41,16 @@ services:
       NODES_INTERVAL: "60"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
+    deploy:
+      # run only on a manager node
+      placement:
+        constraints:
+          - node.role == manager
+      # we only need this once
+      replicas: 1
 
   merger:
-    image: ghcr.io/neuroforgede/swarmdns:0.2.3
+    image: ghcr.io/neuroforgede/swarmdns:0.2.4
     command: ["python", "-u", "merger.py"]
     env_file:
       - .env
