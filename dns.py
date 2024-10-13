@@ -29,7 +29,7 @@ from typing import Dict, List
 import os
 import boto3
 
-DOMAIN_ENDING = os.getenv('DOMAIN_ENDING', '.localdomain.')
+STRIP_DOMAIN_ENDINGS = os.getenv('DOMAIN_ENDING', '.localdomain.,.docker.,.docker.localdomain.').split(',')
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 
 def print_debug(msg):
@@ -246,14 +246,18 @@ class DNSServer:
         print_debug(f"Received request from {addr}: {request.q.qname}")
 
         # Create DNS response header
-        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q)
+        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=0), q=request.q)
+
+        original_domain = str(request.q.qname)
 
         # Find the domain in the DNS_TABLE and return the corresponding IP address
-        domain = str(request.q.qname)
+        domain = original_domain
 
         # strip the trailing .localdomain
-        if domain.endswith(DOMAIN_ENDING):
-            domain = domain[:-len(DOMAIN_ENDING)]
+        for ending in STRIP_DOMAIN_ENDINGS:
+            if domain.endswith(ending):
+                domain = domain[:-len(ending)]
+                break
 
         request_addr = addr[0]
         print_debug(f"Request address: {request_addr}")
@@ -272,9 +276,9 @@ class DNSServer:
             dnsA_records = resolve_dnsA_to_ip(network_data, networks, domain)
 
             for ip in dnsA_records:
-                print_debug(f"Sending response for {domain} -> {ip}")
+                print_debug(f"Sending response for {original_domain} -> {ip}")
                 # Add A record (response)
-                reply.add_answer(RR(domain, rdata=A(ip)))
+                reply.add_answer(RR(original_domain, rdata=A(ip)))
 
         else:
             print_debug(f"IP {request_addr} not found in any Docker network.")
