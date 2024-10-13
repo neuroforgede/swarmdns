@@ -1,0 +1,321 @@
+#!/usr/bin/env python
+# -*- coding: utf-8 -*-
+#
+# Copyright 2022 NeuroForge GmbH & Co. KG <https://neuroforge.de>
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+# http://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+import socket
+from dnslib import DNSRecord, DNSHeader, RR, A
+import threading
+
+import docker
+import json
+from datetime import datetime
+from typing import Any
+from threading import Event
+import signal
+from typing import Dict, List
+import os
+import boto3
+
+DOMAIN_ENDING = os.getenv('DOMAIN_ENDING', '.localdomain.')
+DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
+
+def print_debug(msg):
+    if DEBUG:
+        print(msg)
+
+def print_timed(msg):
+    to_print = '{} [{}]: {}'.format(
+        datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+        'docker_events',
+        msg)
+    print(to_print)
+
+exit_event = Event()
+
+def handle_shutdown(signal: Any, frame: Any) -> None:
+    print_timed(f"received signal {signal}. shutting down...")
+    exit_event.set()
+
+signal.signal(signal.SIGINT, handle_shutdown)
+signal.signal(signal.SIGTERM, handle_shutdown)
+
+def get_networks_info():
+    """
+    Fetches all networks and their associated containers' network information.
+    Returns a dictionary where the key is the network name and the value is
+    another dictionary containing container IDs and their IPs.
+    """
+    client = docker.from_env()
+    networks = client.networks.list()
+
+    network_info = {}
+
+    for network in networks:
+        network_id = network.attrs["Id"]
+
+        # get network details by id
+        network_details = client.api.inspect_network(network_id)
+        # print(network_details)
+        network_name = network_details["Name"]
+        
+        containers = network_details["Containers"]
+        network_info[network_name] = {}
+
+        for container_id, container_details in containers.items():
+            ip_address = container_details.get("IPv4Address")
+            if ip_address:
+                # Strip subnet from the IP address (since it's in CIDR format)
+                ip_address = ip_address.split('/')[0]
+                network_info[network_name][container_id] = ip_address
+    
+    return network_info
+
+def find_container_id_from_ip(ip_address):
+    """
+    Takes an IP address and checks all networks to determine which container it belongs to.
+    Returns the container ID, or None if not found.
+    """
+    network_info = get_networks_info()
+
+    for network_name, container_info in network_info.items():
+        for container_id, container_ip in container_info.items():
+            if container_ip == ip_address:
+                return container_id
+    
+    return None
+
+
+def get_networks_from_container_id(container_id):
+    """
+    Takes a container ID and returns a list of networks that the container is connected to.
+    """
+    client = docker.from_env()
+    container = client.containers.get(container_id)
+    network_info = container.attrs["NetworkSettings"]["Networks"]
+
+    networks = []
+    for network_name, network_details in network_info.items():
+        networks.append(network_name)
+    
+    return networks
+
+def load_network_data_from_dns_s3(bucket, object_name):
+    """
+    Load network data from a JSON file stored in Hetzner S3.
+    
+    :param bucket: The S3 bucket name
+    :param object_name: The name of the object (file) in the S3 bucket
+    :return: The loaded network data as a dictionary, or an empty dictionary if the file is not found
+    """
+    # Hetzner S3 configuration
+    dns_s3_endpoint = os.environ['DNS_S3_ENDPOINT']
+    hetzner_access_key = os.environ['HETZNER_ACCESS_KEY']
+    hetzner_secret_key = os.environ['HETZNER_SECRET_KEY']
+
+    # Create the S3 client with custom endpoint for Hetzner
+    s3_client = boto3.client('s3',
+                             endpoint_url=dns_s3_endpoint,
+                             aws_access_key_id=hetzner_access_key,
+                             aws_secret_access_key=hetzner_secret_key)
+
+    try:
+        # Fetch the object from S3
+        response = s3_client.get_object(Bucket=bucket, Key=object_name)
+        
+        # Read the content of the file (it's in bytes, so we need to decode it)
+        file_content = response['Body'].read().decode('utf-8')
+        
+        # Parse the JSON content
+        network_data = json.loads(file_content)
+        
+        return network_data
+    except s3_client.exceptions.NoSuchKey:
+        print_timed(f"File {object_name} not found in bucket {bucket}. Returning empty dictionary.")
+        return {}
+    except Exception as e:
+        print_timed(f"Error fetching {object_name} from Hetzner S3: {e}")
+        return {}
+
+def load_network_data():
+    """
+    Load network data from a JSON file.
+    """
+    bucket_name = os.environ['DNS_S3_BUCKET_NAME']
+    filename = 'network_data.json'
+    data = load_network_data_from_dns_s3(bucket_name, filename)
+    return data
+
+def resolve_dnsA_to_ip(network_data, networks, domain):
+    """
+    Resolves DNS A records to IP addresses based on the network data.
+    """
+    network_data = load_network_data()
+
+    print_debug(f"Resolving DNS A records for domain: {domain}")
+    print_debug(f"Networks: {networks}")
+
+    dnsA_records = set()
+
+    for network_name, network_info in network_data.items():
+        if network_name not in networks:
+            continue
+
+        if 'containers' in network_info:
+            for container_data in network_info['containers']:
+                ip_address = container_data['ip_address']
+
+                service_name = container_data['service']
+                if f'tasks.{service_name}' == domain:
+                    dnsA_records.add(ip_address)
+
+                dns_names = container_data.get('dns_names', [])
+                if dns_names is not None:
+                    for dns_name in dns_names:
+                        if dns_name == domain:
+                            dnsA_records.add(ip_address)
+                
+                aliases = container_data.get('aliases', [])
+                if aliases is not None:
+                    for alias in aliases:
+                        if alias == domain:
+                            dnsA_records.add(ip_address)
+
+        if 'services' in network_info:
+            for service_data in network_info['services']:
+                relevant_ips = service_data['virtual_ips']
+                endpoint_mode = service_data['endpoint_mode']
+                service_name = service_data['service_name']
+
+                if endpoint_mode == 'dnsrr':
+                    service_name = service_data['service_name']
+                    ip_addresses = set()
+
+                    # find containers that are part of the service
+                    for container_data in network_info['containers']:
+                        if container_data['service'] == service_name:
+                            ip_address = container_data['ip_address']
+                            ip_addresses.add(ip_address)
+                    
+                    relevant_ips = list(ip_addresses)
+
+                if service_name == domain:
+                    for ip in relevant_ips:
+                        dnsA_records.add(ip)
+
+                dns_names = service_data.get('dns_names', [])
+                if dns_names is not None:
+                    for dns_name in dns_names:
+                        if dns_name == domain:
+                            for ip in relevant_ips:
+                                dnsA_records.add(ip)
+                
+                aliases = service_data.get('aliases', [])
+                if aliases is not None:
+                    for alias in aliases:
+                        if alias == domain:
+                            for ip in relevant_ips:
+                                dnsA_records.add(ip)
+
+    print_debug(f"Resolved DNS A records: {dnsA_records}")
+    return list(dnsA_records)
+    
+# DNS Server
+class DNSServer:
+    def __init__(self, ip="0.0.0.0", port=53):
+        self.ip = ip
+        self.port = port
+        self.server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.server.bind((self.ip, self.port))
+
+    def handle_request(self, data, addr):
+        # Parse incoming DNS request
+        request = DNSRecord.parse(data)
+        print_debug(f"Received request from {addr}: {request.q.qname}")
+
+        # Create DNS response header
+        reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=1), q=request.q)
+
+        # Find the domain in the DNS_TABLE and return the corresponding IP address
+        domain = str(request.q.qname)
+
+        # strip the trailing .localdomain
+        if domain.endswith(DOMAIN_ENDING):
+            domain = domain[:-len(DOMAIN_ENDING)]
+
+        request_addr = addr[0]
+        print_debug(f"Request address: {request_addr}")
+
+        container_id = find_container_id_from_ip(request_addr)
+        if container_id:
+            print_debug(f"IP {request_addr} belongs to container {container_id}.")
+
+            # Get the networks that the container is connected to
+            networks = get_networks_from_container_id(container_id)
+            
+            # Load network data
+            network_data = load_network_data()
+
+            # Resolve DNS A records to IP addresses
+            dnsA_records = resolve_dnsA_to_ip(network_data, networks, domain)
+
+            for ip in dnsA_records:
+                print_debug(f"Sending response for {domain} -> {ip}")
+                # Add A record (response)
+                reply.add_answer(RR(domain, rdata=A(ip)))
+
+        else:
+            print_debug(f"IP {request_addr} not found in any Docker network.")
+
+        # Send the DNS response
+        self.server.sendto(reply.pack(), addr)
+
+    def start(self):
+        print_timed(f"DNS Server running on {self.ip}:{self.port}...")
+        while not exit_event.is_set():
+            try:
+                self.server.settimeout(1)  # Set timeout to check for shutdown
+                data, addr = self.server.recvfrom(512)
+                threading.Thread(target=self.handle_request, args=(data, addr)).start()
+            except socket.timeout:
+                # Timeout is used to periodically check if the server should shut down
+                continue
+            except Exception as e:
+                print_timed(f"Error: {e}")
+
+    def stop(self):
+        print_timed("Shutting down DNS server...")
+        self.server.close()
+
+if __name__ == '__main__':
+    # save_network_data_to_json(dns_to_ip_mapping, 'dns_to_ip.json')
+    print("Starting DNS server...")
+
+    server = DNSServer(ip=os.environ['BIND_IP'], port=53)
+    
+    # Start the DNS server in a separate thread
+    server_thread = threading.Thread(target=server.start)
+    server_thread.start()
+
+    # Wait for the shutdown event
+    exit_event.wait()
+
+    # When the event is set, stop the server
+    server.stop()
+
+    # Wait for the server thread to finish
+    server_thread.join()
+
+    print_timed("Server has shut down gracefully.")
