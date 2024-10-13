@@ -9,6 +9,9 @@ services:
       S3_REFRESH_INTERVAL: "10"
       DOCKER_NETWORK_INFO_CACHE_REFRESH_INTERVAL: "10"
       STRIP_DOMAIN_ENDINGS: ".localdomain.,.docker.,.docker.localdomain."
+    dns:
+      - "8.8.8.8"
+      - "8.8.4.4"
     networks:
       - host
     volumes:
@@ -25,6 +28,9 @@ services:
     environment:
       SWARM_NODE_ID: "{{ .Node.ID }}"
       EXPORTER_INTERVAL: "10"
+    dns:
+      - "8.8.8.8"
+      - "8.8.4.4"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
@@ -39,6 +45,9 @@ services:
       - .env
     environment:
       NODES_INTERVAL: "60"
+    dns:
+      - "8.8.8.8"
+      - "8.8.4.4"
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
     deploy:
@@ -54,6 +63,9 @@ services:
     command: ["python", "-u", "merger.py"]
     env_file:
       - .env
+    dns:
+      - "8.8.8.8"
+      - "8.8.4.4"
     environment:
       MERGE_INTERVAL: "10"
 

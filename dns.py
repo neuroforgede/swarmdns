@@ -297,6 +297,8 @@ def resolve_dnsA_to_ip(network_data, networks, domain):
 
     print_debug(f"Resolved DNS A records: {dnsA_records}")
     return list(dnsA_records)
+
+
     
 # DNS Server
 class DNSServer:
@@ -310,6 +312,34 @@ class DNSServer:
         self.executor = ThreadPoolExecutor(max_workers=10)  # Limit the number of concurrent workers
         self.upstream_dns = upstream_dns
         print_debug(f"DNS server initialized on {self.ip}:{self.port}")
+
+    def forward_dns_request(self, request):
+        """
+        Forwards a DNS request to an upstream DNS server and returns the response.
+        """
+        # fallback to upstream DNS server
+        try:
+            # Convert the request to binary format
+            query_data = request.pack()
+
+            # Create a socket and send the query to the upstream server
+            sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+            sock.settimeout(2)
+
+            # Send the request to the upstream DNS server
+            sock.sendto(query_data, (self.upstream_dns, 53))
+            
+            # Receive the response from the upstream server
+            data, _ = sock.recvfrom(4096)
+            sock.close()
+
+            # Parse the response
+            reply = DNSRecord.parse(data)
+        except Exception as e:
+            reply = request.reply()
+            reply.header.rcode = RCODE.SERVFAIL
+
+        return reply
 
     def handle_request(self, data, addr):
         # Parse incoming DNS request
@@ -344,27 +374,8 @@ class DNSServer:
             dnsA_records = resolve_dnsA_to_ip(network_data, networks, domain)
 
             if len(dnsA_records) == 0:
-                # fallback to upstream DNS server
-                try:
-                    # Convert the request to binary format
-                    query_data = request.pack()
-
-                    # Create a socket and send the query to the upstream server
-                    sock = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
-                    sock.settimeout(2)
-
-                    # Send the request to the upstream DNS server
-                    sock.sendto(query_data, (self.upstream_dns, 53))
-                    
-                    # Receive the response from the upstream server
-                    data, _ = sock.recvfrom(4096)
-                    sock.close()
-
-                    # Parse the response
-                    reply = DNSRecord.parse(data)
-                except Exception as e:
-                    reply = request.reply()
-                    reply.header.rcode = RCODE.SERVFAIL
+                print_debug(f"No DNS A records found for domain {domain}. Falling back to upstream DNS server.")
+                reply = self.forward_dns_request(request)
             else:
                 reply = DNSRecord(DNSHeader(id=request.header.id, qr=1, aa=1, ra=0), q=request.q)
                 for ip in dnsA_records:
