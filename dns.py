@@ -373,6 +373,8 @@ class DNSServer:
 
         else:
             print_debug(f"IP {request_addr} not found in any Docker network.")
+            reply = request.reply()
+            reply.header.rcode = RCODE.SERVFAIL
 
         # Send the DNS response
         self.server.sendto(reply.pack(), addr)
