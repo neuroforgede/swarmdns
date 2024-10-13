@@ -19,7 +19,7 @@ services:
       context: ../
       dockerfile: Dockerfile
     environment:
-      DNS_S3_FILE_NAME: 'umfh3tmcs0v9qyo7bkwsvlhxt'
+      SWARM_NODE_ID: 'umfh3tmcs0v9qyo7bkwsvlhxt'
     env_file:
       - .env
     command: ["python", "-u", "exporter.py"]

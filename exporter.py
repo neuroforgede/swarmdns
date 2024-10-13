@@ -214,7 +214,7 @@ if __name__ == '__main__':
         # Fetch containers, DNS names, and aliases, and integrate into network data
         network_data = fetch_containers_and_aliases(network_data)
 
-        filename = os.environ['DNS_S3_FILE_NAME']
+        filename = os.environ['SWARM_NODE_ID']
         save_network_data_to_json(network_data, filename)
 
         bucket_name = os.environ['DNS_S3_BUCKET_NAME']
