@@ -2,7 +2,7 @@ services:
   dns:
     build:
       context: ../
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     environment:
       - DEBUG=true
     env_file:
@@ -17,7 +17,7 @@ services:
   exporter:
     build:
       context: ../
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     environment:
       DNS_S3_FILE_NAME: 'umfh3tmcs0v9qyo7bkwsvlhxt'
     env_file:
@@ -29,7 +29,7 @@ services:
   nodes:
     build:
       context: ../
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     env_file:
       - .env
     command: ["python", "-u", "nodes.py"]
@@ -39,7 +39,7 @@ services:
   merger:
     build:
       context: ../
-      dockerfile: docker/Dockerfile
+      dockerfile: Dockerfile
     env_file:
       - .env
     command: ["python", "-u", "merger.py"]
