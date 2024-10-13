@@ -34,6 +34,7 @@ from concurrent.futures import ThreadPoolExecutor
 STRIP_DOMAIN_ENDINGS = os.getenv('DOMAIN_ENDING', '.localdomain.,.docker.,.docker.localdomain.').split(',')
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
 S3_REFRESH_INTERVAL = int(os.getenv('S3_REFRESH_INTERVAL', '10'))
+NETWORK_INFO_CACHE_INTERVAL = int(os.getenv('NETWORK_INFO_CACHE_INTERVAL', '10'))
 
 def print_debug(msg):
     if DEBUG:
@@ -48,6 +49,8 @@ def print_timed(msg):
 
 exit_event = Event()
 s3_network_data = {}  # Cache for network data loaded from S3
+container_ip_mapping = {}  # Global mapping of container ID to IP address
+network_info_cache = {}  # Cache for network information
 
 def handle_shutdown(signal: Any, frame: Any) -> None:
     print_timed(f"received signal {signal}. shutting down...")
@@ -78,7 +81,44 @@ def refresh_network_data_from_s3_thread_worker():
         threading.Event().wait(S3_REFRESH_INTERVAL)  # Refresh every S3_REFRESH_INTERVAL seconds
 
 
-def get_networks_info():
+def refresh_network_info_cache():
+    global network_info_cache
+
+    print_debug("Refreshing network info cache...")
+    try:
+        network_info_cache = fetch_networks_info()
+    except Exception as e:
+        print_timed(f"Error refreshing network info cache: {e}")
+
+def refresh_network_info_cache_thread_worker():
+    while not exit_event.is_set():
+        refresh_network_info_cache()
+        threading.Event().wait(NETWORK_INFO_CACHE_INTERVAL)  # Refresh every 10 seconds
+
+def listen_to_docker_events():
+    """
+    Listen to Docker events and update container IP mapping when containers are started/stopped/connected/disconnected.
+    """
+    while not exit_event.is_set():
+        try:
+            # if something crashed start with a refresh
+            refresh_network_info_cache()
+
+            # global refresh, not perfect, instead we should only update
+            # the things that are actually affected
+            client = docker.from_env()
+            for event in client.events(decode=True):
+                if event['Type'] == 'container':
+                    action = event['Action']
+                    if action in ['start', 'connect']:
+                        refresh_network_info_cache()
+                    elif action in ['stop', 'disconnect', 'die']:
+                        refresh_network_info_cache()
+        except Exception as e:
+            print_timed(f"Error listening to Docker events: {e}")
+
+
+def fetch_networks_info():
     """
     Fetches all networks and their associated containers' network information.
     Returns a dictionary where the key is the network name and the value is
@@ -114,7 +154,8 @@ def find_container_id_from_ip(ip_address):
     Takes an IP address and checks all networks to determine which container it belongs to.
     Returns the container ID, or None if not found.
     """
-    network_info = get_networks_info()
+    global network_info_cache
+    network_info = network_info_cache
 
     for network_name, container_info in network_info.items():
         for container_id, container_ip in container_info.items():
@@ -137,6 +178,7 @@ def get_networks_from_container_id(container_id):
         networks.append(network_name)
     
     return networks
+
 
 def load_network_data_from_dns_s3(bucket, object_name):
     """
@@ -332,9 +374,16 @@ if __name__ == '__main__':
     print("Starting DNS server...")
 
     refresh_network_data_from_s3()
+    refresh_network_info_cache()
 
     # Start network data refresher from S3
     threading.Thread(target=refresh_network_data_from_s3_thread_worker, daemon=True).start()
+
+    # Start thread to fresh network info cache (as a fallback)
+    threading.Thread(target=refresh_network_info_cache_thread_worker, daemon=True).start()
+
+    # Start listening to Docker events
+    threading.Thread(target=listen_to_docker_events, daemon=True).start()
 
     # Initialize DNS server
     server = DNSServer(ip=os.environ['BIND_IP'], port=53)
