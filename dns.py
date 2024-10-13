@@ -301,7 +301,7 @@ def resolve_dnsA_to_ip(network_data, networks, domain):
 # DNS Server
 class DNSServer:
     def __init__(self, ip="0.0.0.0", port=53):
-        print_debug("Initializing DNS server on {ip}:{port}")
+        print_debug(f"Initializing DNS server on {ip}:{port}")
         self.ip = ip
         self.port = port
         self.server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)

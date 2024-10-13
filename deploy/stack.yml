@@ -1,6 +1,6 @@
 services:
   dns:
-    image: ghcr.io/neuroforgede/swarmdns:0.2.5
+    image: ghcr.io/neuroforgede/swarmdns:0.2.6
     command: ["python", "-u", "dns.py"]
     env_file:
       - .env
@@ -18,7 +18,7 @@ services:
 
   
   exporter:
-    image: ghcr.io/neuroforgede/swarmdns:0.2.5
+    image: ghcr.io/neuroforgede/swarmdns:0.2.6
     command: ["python", "-u", "exporter.py"]
     env_file:
       - .env
@@ -33,7 +33,7 @@ services:
       mode: global
 
   nodes:
-    image: ghcr.io/neuroforgede/swarmdns:0.2.5
+    image: ghcr.io/neuroforgede/swarmdns:0.2.6
     command: ["python", "-u", "nodes.py"]
     env_file:
       - .env
@@ -50,7 +50,7 @@ services:
       replicas: 1
 
   merger:
-    image: ghcr.io/neuroforgede/swarmdns:0.2.5
+    image: ghcr.io/neuroforgede/swarmdns:0.2.6
     command: ["python", "-u", "merger.py"]
     env_file:
       - .env
