@@ -28,9 +28,12 @@ import signal
 from typing import Dict, List
 import os
 import boto3
+from concurrent.futures import ThreadPoolExecutor
+
 
 STRIP_DOMAIN_ENDINGS = os.getenv('DOMAIN_ENDING', '.localdomain.,.docker.,.docker.localdomain.').split(',')
 DEBUG = os.getenv('DEBUG', 'false').lower() == 'true'
+S3_REFRESH_INTERVAL = int(os.getenv('S3_REFRESH_INTERVAL', '10'))
 
 def print_debug(msg):
     if DEBUG:
@@ -44,6 +47,7 @@ def print_timed(msg):
     print(to_print)
 
 exit_event = Event()
+s3_network_data = {}  # Cache for network data loaded from S3
 
 def handle_shutdown(signal: Any, frame: Any) -> None:
     print_timed(f"received signal {signal}. shutting down...")
@@ -51,6 +55,28 @@ def handle_shutdown(signal: Any, frame: Any) -> None:
 
 signal.signal(signal.SIGINT, handle_shutdown)
 signal.signal(signal.SIGTERM, handle_shutdown)
+
+
+
+def refresh_network_data_from_s3():
+    global s3_network_data
+    bucket_name = os.environ['DNS_S3_BUCKET_NAME']
+    filename = 'network_data.json'
+
+    print_debug("Refreshing network data from S3...")
+    try:
+        s3_network_data = load_network_data_from_dns_s3(bucket_name, filename)
+        print_debug(f"S3 network data refreshed: {s3_network_data}")
+    except Exception as e:
+        print_timed(f"Error refreshing network data from S3: {e}")
+
+
+
+def refresh_network_data_from_s3_thread_worker():
+    while not exit_event.is_set():
+        refresh_network_data_from_s3()
+        threading.Event().wait(S3_REFRESH_INTERVAL)  # Refresh every S3_REFRESH_INTERVAL seconds
+
 
 def get_networks_info():
     """
@@ -149,20 +175,18 @@ def load_network_data_from_dns_s3(bucket, object_name):
         print_timed(f"Error fetching {object_name} from S3: {e}")
         return {}
 
-def load_network_data():
+def get_network_data():
     """
     Load network data from a JSON file.
     """
-    bucket_name = os.environ['DNS_S3_BUCKET_NAME']
-    filename = 'network_data.json'
-    data = load_network_data_from_dns_s3(bucket_name, filename)
-    return data
+    global s3_network_data
+    return s3_network_data
 
 def resolve_dnsA_to_ip(network_data, networks, domain):
     """
     Resolves DNS A records to IP addresses based on the network data.
     """
-    network_data = load_network_data()
+    network_data = get_network_data()
 
     print_debug(f"Resolving DNS A records for domain: {domain}")
     print_debug(f"Networks: {networks}")
@@ -238,7 +262,10 @@ class DNSServer:
         self.ip = ip
         self.port = port
         self.server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
+        self.server.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)  # Increase buffer size
         self.server.bind((self.ip, self.port))
+        self.executor = ThreadPoolExecutor(max_workers=10)  # Limit the number of concurrent workers
+        print_debug(f"DNS server initialized on {self.ip}:{self.port}")
 
     def handle_request(self, data, addr):
         # Parse incoming DNS request
@@ -260,9 +287,8 @@ class DNSServer:
                 break
 
         request_addr = addr[0]
-        print_debug(f"Request address: {request_addr}")
-
         container_id = find_container_id_from_ip(request_addr)
+
         if container_id:
             print_debug(f"IP {request_addr} belongs to container {container_id}.")
 
@@ -270,56 +296,53 @@ class DNSServer:
             networks = get_networks_from_container_id(container_id)
             
             # Load network data
-            network_data = load_network_data()
+            network_data = get_network_data()
 
             # Resolve DNS A records to IP addresses
             dnsA_records = resolve_dnsA_to_ip(network_data, networks, domain)
 
             for ip in dnsA_records:
-                print_debug(f"Sending response for {original_domain} -> {ip}")
-                # Add A record (response)
                 reply.add_answer(RR(original_domain, rdata=A(ip)))
+                print_debug(f"Added response for {original_domain} -> {ip}")
 
         else:
             print_debug(f"IP {request_addr} not found in any Docker network.")
 
         # Send the DNS response
         self.server.sendto(reply.pack(), addr)
+        print_debug(f"Response sent to {addr}")
 
     def start(self):
         print_timed(f"DNS Server running on {self.ip}:{self.port}...")
         while not exit_event.is_set():
             try:
-                self.server.settimeout(1)  # Set timeout to check for shutdown
                 data, addr = self.server.recvfrom(512)
-                threading.Thread(target=self.handle_request, args=(data, addr)).start()
-            except socket.timeout:
-                # Timeout is used to periodically check if the server should shut down
-                continue
+                self.executor.submit(self.handle_request, data, addr)  # Submit tasks to the thread pool
             except Exception as e:
                 print_timed(f"Error: {e}")
 
     def stop(self):
         print_timed("Shutting down DNS server...")
         self.server.close()
+        self.executor.shutdown(wait=True)
+        print_debug("DNS server shutdown complete")
 
 if __name__ == '__main__':
     # save_network_data_to_json(dns_to_ip_mapping, 'dns_to_ip.json')
     print("Starting DNS server...")
 
+    refresh_network_data_from_s3()
+
+    # Start network data refresher from S3
+    threading.Thread(target=refresh_network_data_from_s3_thread_worker, daemon=True).start()
+
+    # Initialize DNS server
     server = DNSServer(ip=os.environ['BIND_IP'], port=53)
-    
-    # Start the DNS server in a separate thread
-    server_thread = threading.Thread(target=server.start)
-    server_thread.start()
+
+    # Start the DNS server in the main thread
+    server.start()
 
     # Wait for the shutdown event
     exit_event.wait()
-
-    # When the event is set, stop the server
-    server.stop()
-
-    # Wait for the server thread to finish
-    server_thread.join()
 
     print_timed("Server has shut down gracefully.")
