@@ -42,7 +42,7 @@ MAX_RETRIES_IN_ROW = int(os.getenv('MAX_RETRIES_IN_ROW', '10'))
 def print_timed(msg):
     to_print = '{} [{}]: {}'.format(
         datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'docker_events',
+        'exporter',
         msg)
     print(to_print)
 
@@ -173,32 +173,30 @@ def save_network_data_to_json(network_data, filename):
     print_timed(f"Network data saved to {filename}")
 
 
-def upload_to_dns_s3(file_name, bucket, object_name=None):
-    """Upload a file to Hetzner S3 bucket.
+def upload_to_dns_s3(data, bucket, object_name=None):
+    """Upload a file to S3 bucket.
 
-    :param file_name: File to upload
+    :param data: File to upload
     :param bucket: Bucket to upload to
     :param object_name: S3 object name. If not specified then file_name is used
     :return: True if file was uploaded, else False
     """
-    # Hetzner S3 configuration
+    # S3 configuration
     dns_s3_endpoint = os.environ['DNS_S3_ENDPOINT']
-    hetzner_access_key = os.environ['HETZNER_ACCESS_KEY']
-    hetzner_secret_key = os.environ['HETZNER_SECRET_KEY']
+    dns_s3_access_key = os.environ['DNS_S3_ACCESS_KEY']
+    dns_s3_secret_key = os.environ['DNS_S3_SECRET_KEY']
 
-    # Create the S3 client with custom endpoint for Hetzner
+    # Create the S3 client with custom endpoint
     s3_client = boto3.client('s3',
                              endpoint_url=dns_s3_endpoint,
-                             aws_access_key_id=hetzner_access_key,
-                             aws_secret_access_key=hetzner_secret_key)
+                             aws_access_key_id=dns_s3_access_key,
+                             aws_secret_access_key=dns_s3_secret_key)
 
     try:
-        if object_name is None:
-            object_name = file_name
-        s3_client.upload_file(file_name, bucket, object_name)
-        print_timed(f"File {file_name} uploaded to {bucket}/{object_name} on Hetzner S3")
+        s3_client.put_object(Bucket=bucket, Key=object_name, Body=json.dumps(data, indent=4))
+        print_timed(f"File {object_name} uploaded to {bucket}/{object_name} on S3")
     except Exception as e:
-        print_timed(f"Error uploading {file_name} to Hetzner S3: {e}")
+        print_timed(f"Error uploading {object_name} to S3: {e}")
         return False
     return True
 
@@ -215,9 +213,7 @@ if __name__ == '__main__':
         network_data = fetch_containers_and_aliases(network_data)
 
         filename = os.environ['SWARM_NODE_ID']
-        save_network_data_to_json(network_data, filename)
-
         bucket_name = os.environ['DNS_S3_BUCKET_NAME']
-        upload_to_dns_s3(filename, bucket_name, object_name=f"node-data/{filename}.json")
+        upload_to_dns_s3(network_data, bucket_name, object_name=f"node-data/{filename}.json")
 
         exit_event.wait(SCRAPE_INTERVAL)

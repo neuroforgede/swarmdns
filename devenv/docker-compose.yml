@@ -20,6 +20,7 @@ services:
       dockerfile: Dockerfile
     environment:
       SWARM_NODE_ID: 'umfh3tmcs0v9qyo7bkwsvlhxt'
+      SCRAPE_INTERVAL: "10"
     env_file:
       - .env
     command: ["python", "-u", "exporter.py"]
@@ -33,6 +34,8 @@ services:
     env_file:
       - .env
     command: ["python", "-u", "nodes.py"]
+    environment:
+      - SCRAPE_INTERVAL=60
     volumes:
       - /var/run/docker.sock:/var/run/docker.sock
 
@@ -42,4 +45,6 @@ services:
       dockerfile: Dockerfile
     env_file:
       - .env
+    environment:
+      - SCRAPE_INTERVAL=10
     command: ["python", "-u", "merger.py"]

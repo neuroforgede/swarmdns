@@ -23,7 +23,7 @@ def print_timed(msg):
     """Print a message with a timestamp for better debugging."""
     to_print = '{} [{}]: {}'.format(
         datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'docker_events',
+        'merger',
         msg)
     print(to_print)
 
@@ -32,8 +32,8 @@ def load_json_from_s3(bucket, key):
     print_timed(f"Attempting to load JSON from S3: {key}")
     s3_client = boto3.client('s3',
                              endpoint_url=os.getenv('DNS_S3_ENDPOINT'),
-                             aws_access_key_id=os.getenv('HETZNER_ACCESS_KEY'),
-                             aws_secret_access_key=os.getenv('HETZNER_SECRET_KEY'))
+                             aws_access_key_id=os.getenv('DNS_S3_ACCESS_KEY'),
+                             aws_secret_access_key=os.getenv('DNS_S3_SECRET_KEY'))
     try:
         response = s3_client.get_object(Bucket=bucket, Key=key)
         content = response['Body'].read().decode('utf-8')
@@ -48,8 +48,8 @@ def save_json_to_s3(data, bucket, key):
     print_timed(f"Attempting to upload JSON to S3: {key}")
     s3_client = boto3.client('s3',
                              endpoint_url=os.getenv('DNS_S3_ENDPOINT'),
-                             aws_access_key_id=os.getenv('HETZNER_ACCESS_KEY'),
-                             aws_secret_access_key=os.getenv('HETZNER_SECRET_KEY'))
+                             aws_access_key_id=os.getenv('DNS_S3_ACCESS_KEY'),
+                             aws_secret_access_key=os.getenv('DNS_S3_SECRET_KEY'))
     try:
         s3_client.put_object(Bucket=bucket, Key=key, Body=json.dumps(data, indent=4))
         print_timed(f"Successfully uploaded {key} to S3")
@@ -96,10 +96,10 @@ def clean_up_old_files(bucket, valid_files):
     print_timed(f"Starting cleanup of old files in node-data folder.")
     s3_client = boto3.client('s3',
                              endpoint_url=os.getenv('DNS_S3_ENDPOINT'),
-                             aws_access_key_id=os.getenv('HETZNER_ACCESS_KEY'),
-                             aws_secret_access_key=os.getenv('HETZNER_SECRET_KEY'))
+                             aws_access_key_id=os.getenv('DNS_S3_ACCESS_KEY'),
+                             aws_secret_access_key=os.getenv('DNS_S3_SECRET_KEY'))
     try:
-        response = s3_client.list_objects_v2(Bucket=bucket, Prefix="node-data/")
+        response = s3_client.list_objects(Bucket=bucket, Prefix="node-data/")
         if "Contents" in response:
             for item in response["Contents"]:
                 file_key = item["Key"]

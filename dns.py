@@ -39,7 +39,7 @@ def print_debug(msg):
 def print_timed(msg):
     to_print = '{} [{}]: {}'.format(
         datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
-        'docker_events',
+        'dns',
         msg)
     print(to_print)
 
@@ -114,22 +114,22 @@ def get_networks_from_container_id(container_id):
 
 def load_network_data_from_dns_s3(bucket, object_name):
     """
-    Load network data from a JSON file stored in Hetzner S3.
+    Load network data from a JSON file stored in S3.
     
     :param bucket: The S3 bucket name
     :param object_name: The name of the object (file) in the S3 bucket
     :return: The loaded network data as a dictionary, or an empty dictionary if the file is not found
     """
-    # Hetzner S3 configuration
+    # S3 configuration
     dns_s3_endpoint = os.environ['DNS_S3_ENDPOINT']
-    hetzner_access_key = os.environ['HETZNER_ACCESS_KEY']
-    hetzner_secret_key = os.environ['HETZNER_SECRET_KEY']
+    dns_s3_access_key = os.environ['DNS_S3_ACCESS_KEY']
+    dns_s3_secret_key = os.environ['DNS_S3_SECRET_KEY']
 
-    # Create the S3 client with custom endpoint for Hetzner
+    # Create the S3 client with custom endpoint
     s3_client = boto3.client('s3',
                              endpoint_url=dns_s3_endpoint,
-                             aws_access_key_id=hetzner_access_key,
-                             aws_secret_access_key=hetzner_secret_key)
+                             aws_access_key_id=dns_s3_access_key,
+                             aws_secret_access_key=dns_s3_secret_key)
 
     try:
         # Fetch the object from S3
@@ -146,7 +146,7 @@ def load_network_data_from_dns_s3(bucket, object_name):
         print_timed(f"File {object_name} not found in bucket {bucket}. Returning empty dictionary.")
         return {}
     except Exception as e:
-        print_timed(f"Error fetching {object_name} from Hetzner S3: {e}")
+        print_timed(f"Error fetching {object_name} from S3: {e}")
         return {}
 
 def load_network_data():
