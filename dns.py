@@ -309,7 +309,7 @@ class DNSServer:
         self.server = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
         self.server.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, 4096)  # Increase buffer size
         self.server.bind((self.ip, self.port))
-        self.executor = ThreadPoolExecutor(max_workers=10)  # Limit the number of concurrent workers
+        self.executor = ThreadPoolExecutor(max_workers=int(os.getenv('DNS_WORKER_THREADS', '10')))  # Limit the number of concurrent workers
         self.upstream_dns = upstream_dns
         print_debug(f"DNS server initialized on {self.ip}:{self.port}")
 
