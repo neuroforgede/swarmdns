@@ -56,36 +56,36 @@ def save_json_to_s3(data, bucket, key):
 
 def merge_data(merged_data, node_data):
     """Merge node data into the merged data, avoiding duplicates using 'id' for containers and 'service_id' for services."""
-    for network_name, network_info in node_data.items():
+    for network_id, network_info in node_data.items():
         # Initialize the network in merged data if it doesn't exist
-        if network_name not in merged_data:
-            merged_data[network_name] = {
+        if network_id not in merged_data:
+            merged_data[network_id] = {
                 "subnets": [],
                 "containers": [],
                 "services": []
             }
-            print_timed(f"Created new network entry for {network_name}")
+            print_timed(f"Created new network entry for {network_id}")
 
         # Merge subnets
-        initial_subnets_count = len(merged_data[network_name]["subnets"])
-        merged_data[network_name]["subnets"] = list(set(merged_data[network_name]["subnets"] + network_info["subnets"]))
-        print_timed(f"Merged subnets for network {network_name}. Added {len(merged_data[network_name]['subnets']) - initial_subnets_count} new subnets.")
+        initial_subnets_count = len(merged_data[network_id]["subnets"])
+        merged_data[network_id]["subnets"] = list(set(merged_data[network_id]["subnets"] + network_info["subnets"]))
+        print_timed(f"Merged subnets for network {network_id}. Added {len(merged_data[network_id]['subnets']) - initial_subnets_count} new subnets.")
 
         # Merge containers (avoiding duplicates by 'id')
-        container_ids = {c["id"] for c in merged_data[network_name]["containers"]}
+        container_ids = {c["id"] for c in merged_data[network_id]["containers"]}
         for container in network_info["containers"]:
             if container["id"] not in container_ids:
-                merged_data[network_name]["containers"].append(container)
+                merged_data[network_id]["containers"].append(container)
                 container_ids.add(container["id"])
-                print_timed(f"Added container {container['container_name']} (ID: {container['id']}) to network {network_name}")
+                print_timed(f"Added container {container['container_name']} (ID: {container['id']}) to network {network_id}")
 
         # Merge services (avoiding duplicates by 'service_id')
-        service_ids = {s["service_id"] for s in merged_data[network_name]["services"]}
+        service_ids = {s["service_id"] for s in merged_data[network_id]["services"]}
         for service in network_info["services"]:
             if service["service_id"] not in service_ids:
-                merged_data[network_name]["services"].append(service)
+                merged_data[network_id]["services"].append(service)
                 service_ids.add(service["service_id"])
-                print_timed(f"Added service {service['service_name']} (ID: {service['service_id']}) to network {network_name}")
+                print_timed(f"Added service {service['service_name']} (ID: {service['service_id']}) to network {network_id}")
 
     return merged_data
 

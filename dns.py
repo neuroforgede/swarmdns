@@ -134,18 +134,16 @@ def fetch_networks_info():
 
         # get network details by id
         network_details = client.api.inspect_network(network_id)
-        # print(network_details)
-        network_name = network_details["Name"]
         
         containers = network_details["Containers"]
-        network_info[network_name] = {}
+        network_info[network_id] = {}
 
         for container_id, container_details in containers.items():
             ip_address = container_details.get("IPv4Address")
             if ip_address:
                 # Strip subnet from the IP address (since it's in CIDR format)
                 ip_address = ip_address.split('/')[0]
-                network_info[network_name][container_id] = ip_address
+                network_info[network_id][container_id] = ip_address
     
     return network_info
 
@@ -157,7 +155,7 @@ def find_container_id_from_ip(ip_address):
     global network_info_cache
     network_info = network_info_cache
 
-    for network_name, container_info in network_info.items():
+    for network_id, container_info in network_info.items():
         for container_id, container_ip in container_info.items():
             if container_ip == ip_address:
                 return container_id
@@ -174,8 +172,8 @@ def get_networks_from_container_id(container_id):
     network_info = container.attrs["NetworkSettings"]["Networks"]
 
     networks = []
-    for network_name, network_details in network_info.items():
-        networks.append(network_name)
+    for network_id, network_details in network_info.items():
+        networks.append(network_id)
     
     return networks
 
@@ -235,8 +233,8 @@ def resolve_dnsA_to_ip(network_data, networks, domain):
 
     dnsA_records = set()
 
-    for network_name, network_info in network_data.items():
-        if network_name not in networks:
+    for network_id, network_info in network_data.items():
+        if network_id not in networks:
             continue
 
         if 'containers' in network_info:

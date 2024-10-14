@@ -53,7 +53,7 @@ def fetch_networks_and_subnets():
 
     for network in networks:
         network_info = network.attrs
-        network_name = network_info['Name']
+        network_id = network_info['Id']
 
         # Fetch subnets from IPAM config (IP Address Management)
         subnets = []
@@ -66,9 +66,10 @@ def fetch_networks_and_subnets():
             subnet = config.get('Subnet', 'No Subnet')
             subnets.append(subnet)
 
-        network_data[network_name] = {
+        network_data[network_id] = {
             'subnets': subnets,
-            'network_id': network_info['Id'],
+            'network_id': network_id,
+            'name': network_info['Name'],
             'containers': [],
             'services': []  # Initialize services list for each network
         }
@@ -88,7 +89,7 @@ def fetch_containers_and_aliases(network_data):
 
         # Loop over each network the container is connected to
         networks = container_info['NetworkSettings']['Networks']
-        for network_name, network_info in networks.items():
+        for network_id, network_info in networks.items():
             ip_address = network_info.get('IPAddress', None)
             aliases = network_info.get('Aliases', [])
             dns_names = network_info.get('DNSNames', [])  # Fetch DNS names from network info
@@ -97,8 +98,8 @@ def fetch_containers_and_aliases(network_data):
             service = container_info.get('Config', {}).get('Labels', {}).get('com.docker.swarm.service.name', None)
 
             # If the network exists in our network_data (it should), add container info
-            if network_name in network_data:
-                network_data[network_name]['containers'].append({
+            if network_id in network_data:
+                network_data[network_id]['containers'].append({
                     'container_name': container_name,  # DNS name (container name),
                     'id': container_id,
                     'ip_address': ip_address,
@@ -146,7 +147,7 @@ def fetch_and_attach_swarm_services(network_data):
             network_id = network.get('Target', '')
             aliases = network.get('Aliases', [])
             # Match network ID to network names in network_data
-            for network_name, network_info in network_data.items():
+            for network_id, network_info in network_data.items():
                 if network_id == network_info.get('network_id'):  # Match by network ID
                     vip_list = [vip.get('Addr', '') for vip in virtual_ips if vip.get('NetworkID') == network_id]
                     # remove /24 etc from the end of the IP
