@@ -226,7 +226,6 @@ def resolve_dnsA_to_ip(network_data, networks, domain):
     """
     Resolves DNS A records to IP addresses based on the network data.
     """
-    network_data = get_network_data()
 
     print_debug(f"Resolving DNS A records for domain: {domain}")
     print_debug(f"Networks: {networks}")
@@ -240,9 +239,13 @@ def resolve_dnsA_to_ip(network_data, networks, domain):
         if 'containers' in network_info:
             for container_data in network_info['containers']:
                 ip_address = container_data['ip_address']
-
+                stack_name = container_data.get('stack_name', None)
                 service_name = container_data['service']
+                
                 if f'tasks.{service_name}' == domain:
+                    dnsA_records.add(ip_address)
+
+                if stack_name is not None and f'tasks.{stack_name}_{service_name}' == domain:
                     dnsA_records.add(ip_address)
 
                 dns_names = container_data.get('dns_names', [])
@@ -262,6 +265,7 @@ def resolve_dnsA_to_ip(network_data, networks, domain):
                 relevant_ips = service_data['virtual_ips']
                 endpoint_mode = service_data['endpoint_mode']
                 service_name = service_data['service_name']
+                stack_name = service_data.get('stack_name', None)
 
                 if endpoint_mode == 'dnsrr':
                     service_name = service_data['service_name']
@@ -278,6 +282,10 @@ def resolve_dnsA_to_ip(network_data, networks, domain):
                 if service_name == domain:
                     for ip in relevant_ips:
                         dnsA_records.add(ip)
+
+                if stack_name is not None and f'{stack_name}_{service_name}' == domain:
+                    for ip in relevant_ips:
+                        dnsA_records.add(ip_address)
 
                 dns_names = service_data.get('dns_names', [])
                 if dns_names is not None:

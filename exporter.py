@@ -96,6 +96,7 @@ def fetch_containers_and_aliases(network_data):
             container_id = container_info.get('Id', None)
 
             service = container_info.get('Config', {}).get('Labels', {}).get('com.docker.swarm.service.name', None)
+            stack_name = container_info.get('Config', {}).get('Labels', {}).get('com.docker.stack.namespace', None)
 
             # If the network exists in our network_data (it should), add container info
             if network_id in network_data:
@@ -107,7 +108,8 @@ def fetch_containers_and_aliases(network_data):
                     'aliases': aliases,
                     # add the service name so that we can match it to the service later
                     # so that we can do a lookup of the virtual IPs
-                    'service': service
+                    'service': service,
+                    'stack_name': stack_name
                 })
 
     return network_data
@@ -141,6 +143,7 @@ def fetch_and_attach_swarm_services(network_data):
         virtual_ips = service_info.get('Endpoint', {}).get('VirtualIPs', [])
         endpoint_mode = service_info.get('Spec', {}).get('EndpointSpec', {}).get('Mode', 'vip')
         service_id = service_info.get('ID', None)
+        stack_name = service_info.get('Spec', {}).get('Labels', {}).get('com.docker.stack.namespace', None)
 
         # Attach the service to each network it belongs to
         for network in networks:
@@ -158,7 +161,8 @@ def fetch_and_attach_swarm_services(network_data):
                         'replicas': replicas,
                         'aliases': aliases,
                         'endpoint_mode': endpoint_mode,
-                        'virtual_ips': vip_list  # Add Virtual IPs to the service info
+                        'virtual_ips': vip_list,  # Add Virtual IPs to the service info,
+                        'stack_name': stack_name
                     })
                     break
 
